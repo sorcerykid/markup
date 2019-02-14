@@ -1,5 +1,5 @@
 --------------------------------------------------------
--- Minetest :: Bedrock Markup Language (bedrock)
+-- Minetest :: Bedrock Markup Language Mod (markup)
 --
 -- See README.txt for licensing and other information.
 -- Copyright (c) 2016-2019, Leslie Ellen Krause
@@ -143,12 +143,14 @@ markup.parse_message = function ( message, vars )
 						table.insert( cols, { horz = horz, text = text, type = type } )
 
 					elseif type == "item" and string.find( c_val, "^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+$" ) then
-						local itemdef = minetest.registered_items[ c_val ] or ":unknown"
-						local text = "unknown_item.png"
-						if itemdef.type == "tool" or itemdef.type == "craft" then
-							text = itemdef.inventory_image
-						elseif itemdef.tiles then
+						local itemdef = minetest.registered_items[ c_val ]
+						local text
+						if not itemdef then
+							text = "unknown_item.png"
+						elseif itemdef.type == "node" and not itemdef.inventory_image then
 							text = itemdef.tiles[ 1 ]
+						else
+							text = itemdef.inventory_image		-- always fallback to inventory image
 						end
 						table.insert( cols, { horz = horz, text = text, type = type } )
 
