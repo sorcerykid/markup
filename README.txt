@@ -1,4 +1,4 @@
-Bedrock Markup Language Mod v1.0
+Bedrock Markup Language Mod v1.1
 By Leslie E. Krause
 
 Bedrock Markup Language is an extensible markup language and API specifically tailored
