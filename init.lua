@@ -2,14 +2,20 @@
 -- Minetest :: Bedrock Markup Language Mod (markup)
 --
 -- See README.txt for licensing and other information.
--- Copyright (c) 2016-2019, Leslie Ellen Krause
+-- Copyright (c) 2019-2020, Leslie Ellen Krause
 --
--- ./games/just_test_tribute/mods/markup/init.lua
+-- ./games/minetest_game/mods/markup/init.lua
 --------------------------------------------------------
 
 markup = { }
 
-local registered_icons = {
+local UNKNOWN_SKIN_TEXTURE = "character_preview.png"
+local UNKNOWN_ITEM_TEXTURE = "unknown_item.png"
+local UNKNOWN_EMOJI_TEXTURE = "emoji_unknown.png"
+
+-------------------------
+
+markup.registered_emojis = {
 	happy = "emoji_happy.png",
 	silly = "emoji_silly.png",
 	annoyed = "emoji_annoyed.png",
@@ -40,39 +46,124 @@ local registered_icons = {
 	keep_out = "emoji_keep_out.png",
 	cone = "emoji_cone.png",
 	lock = "emoji_lock.png",
-	left_arrow = "emoji_left_arrow.png",
-	right_arrow = "emoji_right_arrow.png",
+	yum = "emoji_yum.png",
+	grin = "emoji_grin.png",
 }
 
-function table.get_index( self, sel_val, def_idx )
-	for idx, val in ipairs( self ) do
-		if val == sel_val then return idx end
-	end
-	return def_idx
+markup.registered_colors = {
+	cyan = "#44FFFF",
+	magenta = "#FF44FF",
+	yellow = "#FFFF44",
+	red = "#FF4444",
+	green = "#44FF44",
+	blue = "#4444FF",
+	black = "#000000",
+	gray = "#AAAAAA",
+	brown = "#DDAA00",
+	teal = "#00DDAA",
+	purple = "#AA00DD",
+	olive = "#AADD00",
+	indigo = "#00AADD",
+	maroon = "#DD00AA",
+}
+
+markup.registered_symbols = {
+	amp = "&",
+	gt = ">",
+	lt = "<",
+	rb = "]",
+	lb = "[",
+	copy = "©",
+	sect = "§",
+	half = "½",
+	deg = "°",
+	pm = "±",
+	div = "÷",
+	mul = "×",
+	dash = "—",
+	bull = "•",
+	lq = "“",
+	rq = "”",
+	lsq = "‘",
+	rsq = "’",
+}
+
+local _ = { }
+
+local function is_match( text, glob )
+	-- use array for captures
+	_ = { string.match( text, glob ) }
+	return #_ > 0 and _ or nil
 end
+
+-------------------------
 
 markup.get_builtin_vars = function ( player_name )
 	local player = minetest.get_player_by_name( player_name )
 
 	return {
-		["$name"] = player_name,
-		["$hash"] = cipher.tokenize( cipher.get_checksum( player_name ) ),
-		["$rank"] = default.rank_to_string( default.get_player_rank( player_name ) ),
-		["$item"] = player:get_wielded_item( ):get_name( ),
-		["$skin"] = skins.skins[ player_name ],
-		["$home"] = minetest.pos_to_string( beds.player_pos[ player_name ] or default.spawn_pos ),
-		["$lifetime"] = math.floor( player:get_lifetime( ) / 60 ),
-		["$uptime"] = math.floor( minetest.get_server_info( ).uptime / 60 ),
-		["$time"] = minetest.get_time_string( ),
-		["$date"] = minetest.get_date_string( ),
-		["$cur_users"] = #default.player_list,
-		["$max_users"] = minetest.setting_get( "max_users" ),
+		name = player_name,
+		item = player:get_wielded_item( ):get_name( ),
+		skin = skins.skins[ player_name ],
+		cur_users = #registry.player_list,
+		max_users = minetest.setting_get( "max_users" ),
 	}
 end
 
-markup.parse_message = function ( message, vars )
-	local text_colors = { cyan = "#44FFFF", magenta = "#FF44FF", yellow = "#FFFF44", red = "#FF4444", green = "#00DD00", blue = "#0000DD", black = "#000000", gray = "#AAAAAA" }
+markup.parse_message = function ( message, vars, defs )
+	if not defs then defs = { } end
 
+	if not defs.colors then
+		defs.colors = markup.registered_colors
+	end
+	if not defs.emojis then
+		defs.emojis = markup.registered_emojis
+	end
+	if not defs.symbols then
+		defs.symbols = markup.registered_symbols
+	end
+
+--[[	-- instantiate generic filter for parsing expressions
+
+        local filter = GenericFilter( )
+	local filter_vars = {
+		name = { type = FILTER_TYPE_STRING, value = vars.name },
+		rank = { type = FILTER_TYPE_STRING, value = vars.rank },
+		item = { type = FILTER_TYPE_STRING, value = vars.item },
+		skin = { type = FILTER_TYPE_STRING, value = vars.skin },
+		home = { type = FILTER_TYPE_STRING, value = vars.home },
+		lifetime = { type = FILTER_TYPE_PERIOD, value = vars.lifetime },
+		uptime = { type = FILTER_TYPE_PERIOD, value = vars.lifetime },
+		time = { type = FILTER_TYPE_STRING, value = vars.time },
+		date = { type = FILTER_TYPE_STRING, value = vars.date },
+		max_lag = { type = FILTER_TYPE_NUMBER, value = vars.max_lag },
+		avg_lag = { type = FILTER_TYPE_NUMBER, value = vars.avg_lag },
+		cur_users = { type = FILTER_TYPE_NUMBER, value = vars.cur_users },
+		max_users = { type = FILTER_TYPE_NUMBER, value = vars.max_users },
+	}
+
+        filter.add_preset_vars( filter_vars )
+
+	filter.define_func( "str", FILTER_TYPE_STRING, { FILTER_TYPE_NUMBER },
+		function ( v, a ) return tostring( a ) end )
+	filter.define_func( "join", FILTER_TYPE_STRING, { FILTER_TYPE_SERIES, FILTER_TYPE_STRING },
+		function ( v, a, b ) return table.concat( a, b ) end )
+	filter.define_func( "when", FILTER_TYPE_STRING, { FILTER_TYPE_PERIOD, FILTER_TYPE_STRING },
+		function ( v, a, b ) local f = { y = 31536000, w = 604800, d = 86400, h = 3600, m = 60, s = 1 }; return f[ b ] and ( math.floor( a / f[ b ] ) .. b ) or "?" end )
+	filter.define_func( "cal", FILTER_TYPE_STRING, { FILTER_TYPE_MOMENT, FILTER_TYPE_STRING },
+		function ( v, a, b ) local f = { ["Y"] = "%y", ["YY"] = "%Y", ["M"] = "%m", ["MM"] = "%b", ["D"] = "%d", ["DD"] = "%a", ["h"] = "%H", ["m"] = "%M", ["s"] = "%S" }; return os.date( string.gsub( b, "%a+", f ), a ) end )
+	filter.define_func( "rand", FILTER_TYPE_NUMBER, { FILTER_TYPE_NUMBER },
+		function ( v, a ) return math.random( a ) end )
+
+	local evaluate = function ( expr )
+		local oper = filter.translate( expr, filter_vars )
+
+		if not oper or oper.type ~= FILTER_TYPE_STRING then
+			return "?"
+		end
+		return oper.value
+	end
+]]
 	-- preprocess the table tags (we should use tokenizer!)
 
 	message = string.gsub( message, "%[r", "[rn" ) -- normal
@@ -91,50 +182,47 @@ markup.parse_message = function ( message, vars )
 	local c_types = { t = "text", i = "item", s = "skin", f = "form" }
 
 	for r_idx, r_val in ipairs( input_rows ) do
-
-		local p, v, t = string.match( r_val, "^(.)=(%d+)%](.*)" )
 		local type = "normal"
 		local vert = 0.0
-		if v then
-			vert = tonumber( v ) / 2
-			type = r_types[ p ]
-			r_val = t
-		else
-			r_val = string.gsub( r_val, "^(.)=?%]", function ( p )
-				type = r_types[ p ]
-				return ""
-			end )	-- allow default tags
+
+		if is_match( r_val, "^(.)=(%d+)%](.*)" ) or is_match( r_val, "^(.)=(%d+%.%d)%](.*)" ) then
+			vert = tonumber( _[ 2 ] ) / 2
+			type = r_types[ _[ 1 ] ]
+			r_val = _[ 3 ]
+		elseif is_match( r_val, "^(.)=?%](.*)" ) then	-- permit default tag
+			type = r_types[ _[ 1 ] ]
+			r_val = _[ 2 ]
 		end
+
 		r_val = string.trim( r_val )
 
-		if t or r_val ~= "" then
+		if r_val ~= "" then
 			local cols = { }
 			local input_cols = string.split( r_val, "[c", true )
 
 			for c_idx, c_val in ipairs( input_cols ) do
-
-				local p, h, t = string.match( c_val, "^(.)=(%d+)%](.*)" )
 				local type = "text"
 				local horz = 0.0
-				if h then
-					horz = tonumber( h ) / 2
-					type = c_types[ p ]
-					c_val = t
-				else
-					c_val = string.gsub( c_val, "^(.)=?%]", function ( p )
-						type = c_types[ p ]
-						return ""
-					end )	-- allow default tags
+
+				if is_match( c_val, "^(.)=(%d+)%](.*)" ) or is_match( c_val, "^(.)=(%d+%.%d)%](.*)" ) then
+					horz = tonumber( _[ 2 ] ) / 2
+					type = c_types[ _[ 1 ] ]
+					c_val = _[ 3 ]
+				elseif is_match( c_val, "^(.)=?%](.*)" ) then	-- permit default tag
+					type = c_types[ _[ 1 ] ]
+					c_val = _[ 2 ]
 				end
 
 				c_val = string.trim( c_val )
-				if t or c_val ~= "" then
-					c_val = string.gsub( c_val, "%$[a-zA-Z_]+", vars )	-- interpolate variables
-				--	c_val = string.gsub( c_val, "[^\]%[.-%]", "" )		-- strip undefined tags?
+
+				if c_val ~= "" or c_idx > 1 then
+					c_val = string.gsub( c_val, "&([a-z]+);", defs.symbols )	-- expand escape codes
+--					c_val = string.gsub( c_val, "%%{(.-)}", evaluate )		-- interpolate functions
+					c_val = string.gsub( c_val, "%$([a-zA-Z_]+)", vars )		-- interpolate variables
 
 					if type == "text" then
 						local text = string.gsub( c_val, "%[q=([a-z]+)%](.-)%[/q%]", function ( code, text )
-							return text_colors[ code ] and minetest.colorize( text_colors[ code ], text ) or "?" .. text
+							return defs.colors[ code ] and minetest.colorize( defs.colors[ code ], text ) or "?" .. text
 						end )
 						table.insert( cols, { horz = horz, text = text, type = type } )
 
@@ -142,27 +230,33 @@ markup.parse_message = function ( message, vars )
 						local text = string.gsub( c_val, "%[q[^%]]*%]", "" )
 						table.insert( cols, { horz = horz, text = text, type = type } )
 
-					elseif type == "item" and string.find( c_val, "^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+$" ) then
-						local itemdef = minetest.registered_items[ c_val ]
+					elseif type == "item" then
 						local text
-						if not itemdef then
-							text = "unknown_item.png"
-						elseif itemdef.type == "node" and not itemdef.inventory_image then
-							text = itemdef.tiles[ 1 ]
+						if string.find( c_val, "^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+$" ) then
+							local itemdef = minetest.registered_items[ c_val ]
+							if not itemdef then
+								text = UNKNOWN_ITEM_TEXTURE
+							elseif itemdef.type == "node" and not itemdef.inventory_image then
+								text = itemdef.tiles[ 1 ]
+							else
+								text = itemdef.inventory_image		-- always fallback to inventory image
+							end
+						elseif type == "item" and c_val == ":blank" then
+							text = "blank.png"
+						elseif type == "item" and string.find( c_val, "^:[a-zA-Z0-9_]+$" ) then
+							text = defs.emojis[ string.sub( c_val, 2 ) ] or UNKNOWN_EMOJI_TEXTURE
 						else
-							text = itemdef.inventory_image		-- always fallback to inventory image
+							text = UNKNOWN_ITEM_TEXTURE
+						end
+						table.insert( cols, { horz = horz, text = text, type = type } )					
+
+					elseif type == "skin" then
+						if string.find( c_val, "^character_%d+$" ) then
+							text = skins.meta[ c_val ] and c_val .. "_preview.png" or UNKNOWN_SKIN_TEXTURE
+						else
+							text = UNKNOWN_SKIN_TEXTURE
 						end
 						table.insert( cols, { horz = horz, text = text, type = type } )
-
-					elseif type == "item" and string.find( c_val, "^:[a-zA-Z0-9_]+$" ) then
-						local text = registered_icons[ string.sub( c_val, 2 ) ] or "emoji_unknown.png"
-						table.insert( cols, { horz = horz, text = text, type = type } )
-
-					elseif type == "skin" and string.find( c_val, "^character_%d+$" ) then
-						local text = skins.meta[ c_val ] and c_val .. "_preview.png" or "character_preview.png"
-						table.insert( cols, { horz = horz, text = text, type = type } )
-
-					elseif type == "icon" and string.find( c_val, "^%w+$" ) then
 					end
 				end
 			end
@@ -173,7 +267,7 @@ markup.parse_message = function ( message, vars )
 	return rows
 end
 
-markup.get_formspec_string = function ( rows, min_horz, min_vert, max_horz, max_vert, border_color, header_color )
+markup.get_formspec_string = function ( rows, min_horz, min_vert, max_horz, max_vert, border_color, header_color, normal_color )
 	-- now render all the cells of the table
 
 	local formspec = ""
@@ -205,12 +299,12 @@ markup.get_formspec_string = function ( rows, min_horz, min_vert, max_horz, max_
 
 		if r.type == "border" then
 			formspec = formspec ..
-				string.format( "box[%0.2f,%0.2f;%0.2f,%0.2f;%s]", off_horz - 0.5, off_vert, max_horz - off_horz + 0.2, depth + 0.1, border_color )
+				string.format( "box[%0.2f,%0.2f;%0.2f,%0.2f;%s]", off_horz - 0.2, off_vert, max_horz - off_horz + 0.2, depth + 0.1, border_color )
 			off_vert = off_vert + 0.1
 
 		elseif r.type == "header" then
 			formspec = formspec ..
-				string.format( "box[%0.2f,%0.2f;%0.2f,%0.2f;%s]", off_horz - 0.4, off_vert + depth - 0.05, max_horz - off_horz, 0.05, header_color )
+				string.format( "box[%0.2f,%0.2f;%0.2f,%0.2f;%s]", off_horz - 0.1, off_vert + depth - 0.05, max_horz - off_horz, 0.05, header_color )
 		end
 
 		for c_idx, c in ipairs( r.cols ) do
@@ -228,33 +322,37 @@ markup.get_formspec_string = function ( rows, min_horz, min_vert, max_horz, max_
 			end
 
 			if c.type == "text" then
+				if normal_color and normal_color ~= "#FFFFFF" then
+					local color_escape = minetest.get_color_escape_sequence( normal_color )
+					c.text = color_escape .. c.text
+					c.text = string.gsub( c.text, string.char( 0x1b ) .. "%(c@#ffffff%)", color_escape )
+				end
+
 				if r.type == "header" then
 					formspec = formspec ..
-						string.format( "textarea[%0.2f,%0.2f;%0.2f,%0.2f;;%s;]", off_horz + 0.0, off_vert, width, depth + depth / 6,
+						string.format( "textarea[%0.2f,%0.2f;%0.2f,%0.2f;;%s;]", off_horz + 0.3, off_vert, width, depth + depth / 6,
 							minetest.formspec_escape( c.text ) )
 				end
 
 				formspec = formspec ..
-					-- correct for oddity with textarea stretching
-					string.format( "textarea[%0.2f,%0.2f;%0.2f,%0.2f;;%s;]", off_horz, off_vert, width, depth + depth / 6,
+					-- NB: correct for odditiese with dimension and position of textarea
+					string.format( "textarea[%0.2f,%0.2f;%0.2f,%0.2f;;%s;]", off_horz + 0.3, off_vert, width, depth + depth / 6,
 						minetest.formspec_escape( c.text ) )
 
 			elseif c.type == "form" then
-				formspec = formspec .. string.format( "field[%0.1f,%0.1f;%0.1f,1.3;userdata;;%s]", off_horz, off_vert, width,
+				formspec = formspec .. string.format( "field[%0.1f,%0.1f;%0.1f,1.3;userdata;;%s]", off_horz + 0.3, off_vert, width,
 					minetest.formspec_escape( c.text ) )
 
 			elseif c.type == "item" then
-				-- NB: image must be shifted left to correspond with formspec text
 				if depth >= 0.5 then
 					formspec = formspec .. string.format( "image[%0.1f,%0.1f;%0.1f,%0.1f;%s]",
-						off_horz - 0.3, off_vert, math.min( width, depth ), math.min( width, depth ), c.text )
+						off_horz, off_vert, math.min( width, depth ), math.min( width, depth ), c.text )
 				end
 
 			elseif c.type == "skin" then
-				-- NB: image must be shifted left to correspond with formspec text
 				if depth >= 0.5 then
 					formspec = formspec .. string.format( "image[%0.1f,%0.1f;%0.1f,%0.1f;%s]",
-						off_horz - 0.3, off_vert, math.min( width, depth / 2 ), math.min( width * 2, depth ), c.text )
+						off_horz, off_vert, math.min( width, depth / 2 ), math.min( width * 2, depth ), c.text )
 				end
 
 			end
